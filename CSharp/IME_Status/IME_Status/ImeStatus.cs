@@ -19,44 +19,37 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 using JKCommon;
 using System;
 using System.Collections.Generic;
-using System.ComponentModel;
-using System.Data;
-using System.Drawing;
 using System.Linq;
-using System.Runtime.InteropServices;
 using System.Text;
-using System.Windows.Forms;
 
 namespace IME_Status
 {
-    public partial class Form1 : Form
+    public class ImeStatus
     {
-        public Form1()
+        /// <summary>
+        /// 한/영 상태 확인
+        /// </summary>
+        /// <param name="hWnd">상태를 확인할 윈도우핸들</param>
+        /// <param name="isHangul">리턴값 한글이면 true 영문이면 false</param>
+        /// <returns>확인에 실패한 경우 false</returns>
+        public static bool GetStatus(IntPtr hWnd, ref bool isHangul)
         {
-            InitializeComponent();
+            if (hWnd == IntPtr.Zero)
+                return false;
 
-            timer1.Interval = 500;
-            timer1.Tick += Timer1_Tick;
-            timer1.Start();
-        }
+            IntPtr hImeWnd = Win32.ImmGetDefaultIMEWnd(hWnd);
+            if (hImeWnd == IntPtr.Zero)
+                return false;
 
-        private void Timer1_Tick(object sender, EventArgs e)
-        {
-            // 현재 활성화된 윈도우의 GUI스레드정보 가져오기
-            Win32.GUITHREADINFO ti = new Win32.GUITHREADINFO();
-            ti.cbSize = Marshal.SizeOf(ti);
-            if(Win32.GetGUIThreadInfo(0, ref ti))
-            {
-                bool isHangul = false;
-                bool bSuccess = ImeStatus.GetStatus(ti.hwndFocus, ref isHangul);
+            uint IMC_GETOPENSTATUS = 5;
+            //uint IMC_GETCONVERSIONMODE = 1;
+            Win32.ImeConversionMode mode = (Win32.ImeConversionMode)Win32.SendMessage(hImeWnd, Win32.WindowMessage.ImeControl, (IntPtr)IMC_GETOPENSTATUS, IntPtr.Zero);
 
-                if (!bSuccess)
-                    Console.WriteLine("Failed to GetStatus.");
-                else
-                    Console.WriteLine(string.Format("Focus Handle={0}, isHangul={1}", ti.hwndFocus.ToString(), isHangul.ToString()));
-            }
+            // 일본어, 중국어 등에 대한 처리는 안되어 있으니 주의.
 
-            
+            isHangul = mode==Win32.ImeConversionMode.IME_CMODE_HANGUL;
+
+            return true;
         }
     }
 }
