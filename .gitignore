@@ -301,3 +301,5 @@ $RECYCLE.BIN/
 
 # Windows shortcuts
 *.lnk
+
+Java/Android/FCMclient/app/google-services.json
