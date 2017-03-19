@@ -4,6 +4,14 @@
 
     <!-- MMS수신 권한 추가 -->
     <uses-permission android:name="android.permission.RECEIVE_MMS"/>
+    <uses-permission android:name="android.permission.RECEIVE_WAP_PUSH"/>
+
+    <!--
+        2017.03.15 kim,jk RECEIVE_MMS만 추가하면 mms수신 리시버 이벤트가 발생하지 않는다
+        RECEIVE_WAP_PUSH를 추가하면 발생
+
+
+    -->
 
     <application
         android:allowBackup="true"
@@ -21,10 +29,11 @@
 
         <!-- MMS 수신 객체 설정 -->
         <receiver android:name=".MMSReceiver"
-            android:permission="android.provider.permission.BROADCAST_WAP_PUSH">
+            android:permission="android.permission.BROADCAST_WAP_PUSH">
             <intent-filter>
-                <action android:name="android.provider.Telephony.WAP_PUSH_RECEIVED"/>
-                <data android:mimeType="application/vnd.wap.mms-message"/>
+                <!--<action android:name="android.provider.Telephony.WAP_PUSH_DELIVER"/>-->
+                <action android:name="android.provider.Telephony.WAP_PUSH_RECEIVED" />
+                <data android:mimeType="application/vnd.wap.mms-message" />
             </intent-filter>
         </receiver>
 
