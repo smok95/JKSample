@@ -63,6 +63,11 @@ public class MMSInfo {
         https://android.googlesource.com/platform/frameworks/opt/mms/+/4bfcd8501f09763c10255442c2b48fad0c796baa/src/java/com/google/android/mms/pdu/PduHeaders.java
         https://android.googlesource.com/platform/frameworks/opt/mms/+/a81f07778a3400a7839564f9fc027b1548329004/src/java/com/google/android/mms/pdu/PduParser.java
 
+        * to decode the subject field of MMS Notification...
+        https://support.nowsms.com/discus/messages/12/3746.html
+        * mms-decoder
+        https://github.com/heyman/mms-decoder/blob/master/mmsdecoder.php
+
         현재까지 확인한 데이터 형식은 field값(1byte) 값 이며 00이 오면 값의 종료를 뜻하며 아닌 경우도 있음.
 
         8C : X-Mms-Message-Type
@@ -80,7 +85,6 @@ public class MMSInfo {
         final byte SUBJECT = (byte)0x96;
 
         MMSInfo info = new MMSInfo();
-
 
         int pos = 0;
 
@@ -154,6 +158,10 @@ public class MMSInfo {
                 int idx = findIndex(data, pos, (byte)0);
                 if(idx == -1)
                     return info;
+
+                // subject string는 EncodedStringValue로 parse가 필요함
+                // see also : https://github.com/heyman/mms-decoder/blob/master/mmsdecoder.php
+
                 info.subject = new String(Arrays.copyOfRange(data, pos, idx));
                 pos = idx;
             }
