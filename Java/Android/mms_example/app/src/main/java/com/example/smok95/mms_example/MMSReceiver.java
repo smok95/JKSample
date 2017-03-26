@@ -56,6 +56,10 @@ public class MMSReceiver extends BroadcastReceiver {
         byte[] buffer = bundle.getByteArray("data");
         String incomingNumber = new String(buffer);
 
+        MMSInfo info = MMSInfo.fromByteArray(buffer);
+
+        Log.d(TAG, info.messageType + "," + info.transactionId + ",version=" + info.version+ ",from=" + info.from + ",subject=" + info.subject);
+
         Log.d(TAG, "data.length=" + buffer.length + ",value='" + bytesToHex(buffer) + "'");
         Log.d(TAG, incomingNumber);
 
