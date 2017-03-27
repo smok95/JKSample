@@ -25,7 +25,7 @@ public class MainActivity extends AppCompatActivity {
 
         MMSInfo info = MMSInfo.fromHexString(strSample);
 
-        Log.d(TAG, info.messageType + "," + info.transactionId + ",version=" + info.version+ ",from=" + info.from + ",subject=" + info.subject);
+        Log.d(TAG, info.getMessageType() + "," + info.getTransactionId()+ ",version=" + info.getVersion()+ ",from=" + info.getFrom()+ ",subject=" + info.getSubject());
     }
 
 

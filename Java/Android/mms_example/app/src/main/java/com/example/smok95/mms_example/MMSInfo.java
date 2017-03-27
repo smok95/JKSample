@@ -5,6 +5,7 @@ import android.util.Log;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.util.Arrays;
+import java.util.jar.Pack200;
 
 /**
  * Created by smok95 on 19/03/2017.
@@ -13,19 +14,41 @@ import java.util.Arrays;
 public class MMSInfo {
     private static final String TAG = "MMSInfo";
 
-    public static final byte MMS_VERSION_1_3 = (byte)0x93;
-    public static final byte MMS_VERSION_1_2 = (byte)0x92;
-    public static final byte MMS_VERSION_1_1 = (byte)0x91;
-    public static final byte MMS_VERSION_1_0 = (byte)0x90;
-
     private String m_transactionId;
     private String m_from;
     private String m_subject;
     private int m_messageType;
     private String m_version;
 
-    private ByteArrayInputStream m_bis = null;
 
+    public String getTransactionId(){
+        return m_transactionId;
+    }
+
+    public String getFrom(){
+        return m_from;
+    }
+
+    public String getSubject(){
+        return m_subject;
+    }
+
+    public int getMessageType(){
+        return m_messageType;
+    }
+
+    public String getVersion(){
+        return m_version;
+    }
+
+    private byte[] m_raw = null;
+    private int m_pos = 0;
+
+    private int readByte(){
+        if(m_raw==null || m_raw.length <= m_pos)
+            return -1;
+        return m_raw[m_pos++] & 0xff;
+    }
     private boolean initFromByteArray(byte[] raw)
     {
         final int MESSAGE_TYPE = 0x83;
@@ -34,6 +57,8 @@ public class MMSInfo {
         final int FROM = 0x89;
         final int SUBJECT = 0x96;
 
+        m_pos = 0;
+        m_raw = null;
          /*
         관련 정보
         http://m.blog.naver.com/hkbemil/130181128951
@@ -61,74 +86,120 @@ public class MMSInfo {
         if(raw == null || raw.length==0)
             return false;
 
-        m_bis = new ByteArrayInputStream(raw);
+        m_raw = raw;
+
         int fieldType = 0;
 
-        while(m_bis.available() > 0)
+        while(m_pos < m_raw.length)
         {
-            fieldType = m_bis.read();
-            if(fieldType == -1)
-                return false;
-
+            fieldType = readByte();
             switch (fieldType)
             {
                 case MESSAGE_TYPE:{
-                    m_messageType = m_bis.read();
+                    m_messageType = readByte();
                 }break;
                 case TRANSACTION_ID:{
                     m_transactionId = parseTextString();
                 }break;
+                case MMS_VERSION:{
 
-            }
+                    final int MMS_VERSION_1_3 = 0x93;
+                    final int MMS_VERSION_1_2 = 0x92;
+                    final int MMS_VERSION_1_1 = 0x91;
+                    final int MMS_VERSION_1_0 = 0x90;
 
-            else if(fieldType == MMS_VERSION)
-            {
-                if(pos >= data.length)
-                    break;
+                    switch (readByte()){
+                        case MMS_VERSION_1_3:   m_version="1.3"; break;
+                        case MMS_VERSION_1_2:   m_version="1.2"; break;
+                        case MMS_VERSION_1_1:   m_version="1.1"; break;
+                        case MMS_VERSION_1_0:   m_version="1.0"; break;
+                        default:                m_version="1.2"; break;
+                    }
+                }break;
+                case FROM:{
+                    m_from = parseFromValue();
 
-                switch (data[pos])
-                {
-                    case MMS_VERSION_1_3:   info.version= "1.3"; break;
-                    case MMS_VERSION_1_2:   info.version = "1.2"; break;
-                    case MMS_VERSION_1_1:   info.version = "1.1"; break;
-                    case MMS_VERSION_1_0:   info.version = "1.0"; break;
-                    default:                info.version = "1.2"; break;
-
-                }
-            }
-            else if(fieldType == FROM)
-            {
-                if(pos >= data.length)
-                    break;
-
-                // 1st byte는 Length of Sender ID(as per wap-230 spec : page 83, this number must be less than 1F)
-                pos++;
-
-                // 2nd byte는 Address-Presentation-Token
-                pos++;
-
-                int idx = findIndex(data, pos, (byte)0);
-                if(idx == -1)
-                    return info;
-
-                info.from = new String(Arrays.copyOfRange(data, pos, idx));
-                pos = idx;
-
-                // From에서 "/TYPE=PLMN" 제거
-                idx = info.from.indexOf("/TYPE=PLMN");
-                if(idx != -1)
-                    info.from = info.from.substring(0, idx);
-            }
-            else if(fieldType == SUBJECT)
-            {
-                if(pos >= data.length)
-                    break;
-                // see also : https://github.com/heyman/mms-decoder/blob/master/mmsdecoder.php
-                info.subject  = parseEncodedStringValue(data, pos);
-                pos = ;
+                    // From에서 "/TYPE=PLMN" 제거
+                    int idx = m_from.indexOf("/TYPE=PLMN");
+                    if(idx != -1)
+                        m_from = m_from.substring(0, idx);
+                }break;
+                case SUBJECT:{
+                    // see also : https://github.com/heyman/mms-decoder/blob/master/mmsdecoder.php
+                    m_subject = parseEncodedStringValue();
+                }break;
             }
         }
-        return info;
+
+        return true;
+    }
+
+    /**
+     * Parse From-value
+     * From-value = Value=length (Address-present-token Encoded-string-value | Insert-address-token)
+     *
+     * Address-present-token = <Octet 128>
+     * Insert-address-token = <Octet 129>
+     * @return
+     */
+    private String parseFromValue(){
+        final byte FROM_ADDRESS_PRESENT_TOKEN = (byte)0x80;
+        final byte FROM_INSERT_ADDRESS_TOKEN = (byte)0x81;
+
+        int len = parseValueLength();
+
+        if(m_raw[m_pos] == FROM_ADDRESS_PRESENT_TOKEN){
+            m_pos++;
+            return parseEncodedStringValue();
+        }
+        else if(m_raw[m_pos] == FROM_INSERT_ADDRESS_TOKEN){
+            m_pos++;
+            return "";
+        }
+        else{
+            // something is wrong since none of the tokens are present, try to skip this field
+            m_pos += len;
+            return "";
+        }
+    }
+
+    /**
+     * Parse Value-length
+     * Value-length = Short-length<Octet 0-30> | Length-quote<Octet 31> Length<Uint>
+     *
+     * A list of content-types of a MMS message can be found here:
+     * http://www.wapforum.org/wina/wsp-content-type.htm
+     * @return the value length, or -1 if the got a problem.
+     */
+    private int parseValueLength(){
+        if(m_raw[m_pos] < 31)
+            return (int)m_raw[m_pos++]; // it's a short-length
+        else if(m_raw[m_pos] == 31)
+        {
+            // got the quote, length is an Uint
+            m_pos++;
+            return parseUint();
+        }
+        else
+            return -1;  // we got a problem.
+    }
+
+    private int parseUint(){
+        int ret = 0;
+
+        while((m_raw[m_pos] & (byte)0x80) != 0){
+            // Shift the current value 7 steps
+            ret = ret << 7;
+            // Remove the first bit of the byte and add it to the current value
+            ret |= m_raw[m_pos++] & (byte)0x7f;
+        }
+
+        // Shift the current value 7 steps
+        ret = ret << 7;
+        // Remove the first bit of the byte and add it to the current value
+        ret |= m_raw[m_pos++] & (byte)0x7f;
+
+        return ret;
     }
 
     /**
@@ -136,12 +207,10 @@ public class MMSInfo {
      * text-string = [Quote <Octet 127>] text [End-string <Octet 00>]
      */
     private String parseTextString(){
-        if(m_bis == null || m_bis.available()==0)
+        if(m_raw==null || m_raw.length <= m_pos)
             return "";
 
-        int val = m_bis.read();
-        if(val == -1)
-            return "";
+        int val = readByte();
 
         ByteArrayOutputStream bos = new ByteArrayOutputStream();
 
@@ -151,7 +220,7 @@ public class MMSInfo {
 
         while(true)
         {
-            val = m_bis.read();
+            val = readByte();
             if(val == 0x00)
                 break;
             bos.write(val);
@@ -185,17 +254,15 @@ public class MMSInfo {
 
     public static MMSInfo fromByteArray(byte[] data)
     {
-        return new MMSInfo(data);
+        MMSInfo info = new MMSInfo();
+        if(info.initFromByteArray(data))
+            return info;
+        else
+            return null;
     }
 
-    private static String parseEncodedStringValue(byte[] v, int pos)
+    private String parseEncodedStringValue()
     {
-        // 문자열의 끝을 검색한다 (string zero)
-        int idx = findIndex(v, pos, (byte)0);
-        if(idx == -1)
-            return "";
-
-
         // character set
         final int CS_UTF8 = 0xEA;
         final int CS_ASCII = 0x83;
@@ -204,44 +271,12 @@ public class MMSInfo {
         final int CS_ISO_8859_3 = 0x86;
         final int CS_ISO_8859_4 = 0x87;
 
-        int len = 0; // 문자열 길이
+        if(m_raw[m_pos] <= 31){
+            int len = parseValueLength();
 
-        if(v[pos] <= 31)
-        {
-            if(v[pos] < 31)
-                len = v[pos++];
-            else if(v[pos] == 31){
-                // got the quote, length is an uint
-                pos++;
-
-                while((v[pos] & 0x80) > 0){
-                    // Shift the current value 7 steps
-                    len = len << 7;
-                    // Remove the first bit of the byte and add it to the current value
-                    len |= v[pos++] & 0x7f;
-                }
-
-                // Shift the current value 7 steps
-                len = len << 7;
-                // Remove the first bit of the byte and add it to the current value
-                len |= v[pos++] & 0x7f;
-            }
-
-            // Remove quote
-            if(v[pos] == 0x7f)
-                pos++;
-
-            int charSet = (int)v[pos++];
-
-            Log.d(TAG, "encoded string len=" + (idx-pos));
-            return new String(v, pos, idx-pos);
+            int charset = (int)m_raw[m_pos++];
         }
-        else {
-            // Remove quote
-            if(v[pos] == 0x7f)
-                pos++;
-            return new String(v, pos, idx-pos);
-        }
+        return parseTextString();
     }
 
 }
